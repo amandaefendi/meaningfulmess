@@ -1,6 +1,7 @@
-# meaningfulmess
+# Uni Projects
 A repository of my past projects in and outside of uni work!
 
+## WA Super 2019
 CONTENTS:
 - RMD File: Project part 1
   Mainly importing data from each separate datasets
