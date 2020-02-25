@@ -8,5 +8,3 @@ SOFTWARE: R and Excel
 PROBLEM STATEMENT:
 Create a model that can help find the key characteristic of a client who is about to exit the superfund in order to prevent such client's exit
 
-DATASETS:
-MemberData
