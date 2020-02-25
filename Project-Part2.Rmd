@@ -1,0 +1,297 @@
+---
+title: "Exploratory Analysis - WA Super Datasets"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r message=FALSE}
+library(GGally)
+library(zoo)
+library(mondate)
+library(lubridate)
+library(tidyr)
+library(doBy)
+library(geepack)
+library(klaR)
+library(rattle)
+library(caret)
+```
+
+# MERGE DATA (warning: actual data chunks in Part 1)
+
+```{r}
+MergeMain <- function(df1, df2){
+  #do left outer join
+  df3 <- merge(df1, df2, by.x="Client.Number.key", by.y="Client.No", all.x=TRUE)
+  #change all NA values to 0, ncol(df3) leads to the last col in the df
+  df3[ is.na(df3[,ncol(df3)]), ncol(df3) ] <- "0"
+  return(df3)
+}
+```
+
+```{r Merge using function}
+merge1 <- MergeMain(MemberData, occurBenefit)
+merge1 <- MergeMain(merge1, occurCall)
+merge1 <- MergeMain(merge1, occurEmail)
+merge1 <- MergeMain(merge1, occurClicks)
+merge1 <- MergeMain(merge1, occurAOL)
+merge1 <- MergeMain(merge1, occurRollins)
+merge1 <- MergeMain(merge1, LGAPCount)
+merge1 <- MergeMain(merge1, LGSPCount)
+merge1 <- MergeMain(merge1, occurSOA)
+merge1 <- MergeMain(merge1, occurAR)
+```
+
+# Create Main Dataset from merge1
+
+```{r EDA}
+EDA <- data.frame("ClientNo"=merge1$Client.Number.key,
+                  "Status"=merge1$OverallStatus,
+                  "Duration"=as.numeric(merge1$DurationinWS),
+                  "Fund"=merge1$Fund,
+                  "Gender"=merge1$Sex,
+                  "Age"=merge1$Age,
+                  "Lifestage"=merge1$Lifestage,
+                  "Salary"=merge1$Salary,
+                  "Balance"=as.numeric(merge1$FinalBalance),
+                  "HasLGAP"=as.numeric(merge1$LGAPCount),
+                  "HasLGSP"=as.numeric(merge1$LGSPCount),
+                  "Insurance"=as.factor(merge1$Has.Insurance),
+                  "BenefitPayments"=as.numeric(merge1$Benefit.Freq),
+                  "CallFreq"=as.numeric(merge1$Call.Freq),
+                  "EmailFreq"=as.numeric(merge1$Email.Freq),
+                  "SuperClickAdvice"=as.numeric(merge1$Click.Freq),
+                  "AOLFreq"=as.numeric(merge1$AOL.Freq),
+                  "RollinsFreq"=as.numeric(merge1$Rollin.Freq),
+                  "SOAFreq"=as.numeric(merge1$SOA.Freq),
+                  "ARFreq"=as.numeric(merge1$AR.Freq),
+                  "Voluntary"=as.factor(merge1$Members.Contributing.),
+                  "SinceLastCon"=as.factor(merge1$Last.Contribution)
+                  )
+```
+
+```{r List of client numbers that have multiples in EDA}
+repeats <- data.frame(table(EDA$ClientNo))
+repeats <- repeats[repeats$Freq>"1",]
+```
+
+```{r Create overall balance for multiple accounts using sum finalbalance}
+for (i in 1:nrow(repeats)){
+  Client <- repeats$Var1[i]
+  MatchIdx <- which(EDA$ClientNo %in% Client)
+  EDA$Balance[MatchIdx] <- sum(EDA$Balance[MatchIdx])
+}
+```
+
+```{r getting rid of the other observations}
+EDA <- EDA[firstobs(EDA[,1]),]
+```
+
+```{r To check if there is any N/A or 0 balance for Exit members}
+summary(EDA$Balance[EDA$Status=="E"])
+```
+
+# Modelling with EDA (original dataset) PART 2
+
+### EDA Decision Tree
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+dtmodel <- rpart(Status ~ . -ClientNo, data=EDA, method='class')
+rpart.plot(dtmodel, extra=106)
+```
+
+```{r fig.height=6, fig.width=12.5}
+dtmodel <- ctree(Status ~ Duration+Fund+Gender+Age+Lifestage+Salary+Balance+HasLGAP+HasLGSP+Insurance+BenefitPayments+CallFreq+EmailFreq+SuperClickAdvice+AOLFreq+RollinsFreq+SOAFreq+ARFreq+Voluntary+SinceLastCon, data=EDA)
+plot(dtmodel)
+```
+
+### EDA Random Forest
+
+```{r message=FALSE}
+library(randomForest)
+library(partykit)
+library(party)
+library(tree)
+```
+
+```{r}
+rfmodel <- randomForest(Status ~ . -ClientNo, data=EDA[!is.na(EDA$Salary),])
+print(rfmodel)
+```
+
+```{r EDA varImpPlot}
+varImpPlot(rfmodel, main='Variable Importance based on Random Forest')
+```
+
+```{r}
+ctable <- as.table(matrix(c(49536, 131, 92, 13997), nrow = 2, byrow = TRUE))
+fourfoldplot(ctable, color = c("#CC6666", "#99CC99"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix RF EDA")
+```
+
+
+### EDA Logistic
+
+```{r}
+logmodel <- glm(Status ~ . - ClientNo, data=EDA, family = "binomial"(link="logit"))
+summary(logmodel)
+```
+
+```{r}
+anova(logmodel, test='Chisq')
+```
+
+### EDA LDA
+
+```{r}
+library(MASS)
+library(klaR)
+```
+
+```{r}
+ldamodel <- lda( Status ~ . -ClientNo, data=EDA)
+```
+
+```{r}
+ldamodelvalues <- predict(ldamodel)
+head(ldamodelvalues)
+
+ldahist(ldamodelvalues$x[,1], g=EDA$Status)
+```
+```{r}
+partimat(Status ~ . -ClientNo, data=EDA, method='lda')
+```
+
+# Making EDA2 less variables from EDA
+
+```{r Narrowing variables down to top 7}
+EDA2 <- data.frame("ClientNo"=merge1$Client.Number.key,
+                  "Status"=merge1$OverallStatus,
+                  "Duration"=as.numeric(merge1$DurationinWS),
+                  "Age"=merge1$Age,
+                  "Salary"=merge1$Salary,
+                  "Balance"=as.numeric(merge1$FinalBalance),
+                  "Insurance"=as.factor(merge1$Has.Insurance),
+                  "BenefitPayments"=as.numeric(merge1$Benefit.Freq),
+                  "SinceLastCon"=as.factor(merge1$Last.Contribution)
+                  )
+```
+
+```{r List of client numbers that have multiples in EDA2}
+repeats <- data.frame(table(EDA2$ClientNo))
+repeats <- repeats[repeats$Freq>"1",]
+```
+
+```{r Create overall balance for multiple accounts using sum finalbalance}
+for (i in 1:nrow(repeats)){
+  Client <- repeats$Var1[i]
+  MatchIdx <- which(EDA2$ClientNo %in% Client)
+  EDA2$Balance[MatchIdx] <- sum(EDA2$Balance[MatchIdx])
+}
+```
+
+```{r getting rid of the other observations}
+EDA2 <- EDA2[firstobs(EDA2[,1]),]
+```
+
+```{r To check if there is any N/A or 0 balance for Exit members}
+summary(EDA2$Balance[EDA2$Status=="E"])
+```
+
+# Training and Test EDA2
+
+```{r Making the train and test dataset}
+set.seed(95)
+TestIdx <- sample(1:nrow(EDA2), size =floor(nrow(EDA2)*0.15))
+EDA2Test <- EDA2[TestIdx,]
+EDA2Train <- EDA2[-(TestIdx),]
+```
+
+### EDA2 Decision Tree
+
+```{r fig.height=20, fig.width=40}
+dtmodel <- ctree(Status ~ Duration+Age+Salary+Balance+Insurance+BenefitPayments+SinceLastCon, data=EDA2)
+plot(dtmodel)
+```
+
+### EDA2 RandomForest
+
+```{r RandomForest with Training Dataset}
+A.rfmodel <- randomForest(Status ~ . -ClientNo, data=EDA2Train[!is.na(EDA2Train$Salary),], importance=TRUE, na.action=na.roughfix, ntree=300)
+print(A.rfmodel)
+```
+
+```{r Prediction with test dataset}
+predRF <- predict(A.rfmodel, newdata=EDA2Test)
+table(predRF,EDA2Test$Status)
+```
+```{r confusion matrix default}
+errormatrix(EDA2Test$Status, predRF, relative=TRUE)
+```
+```{r}
+ctable <- as.table(matrix(c(7703, 18, 36, 2123), nrow = 2, byrow = TRUE))
+fourfoldplot(ctable, color = c("#CC6666", "#99CC99"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix RF EDA2")
+```
+
+```{r ggVarImp plot}
+ggVarImp(A.rfmodel, log=TRUE)
+```
+
+### EDA2 Random Forest Multiple Cross Validation
+
+```{r}
+#library(caret)
+#train_control <- trainControl(method='cv', number=3)
+#grid <- expand.grid(.fL=c(0), .usekernel=c(FALSE))
+#rfcvmodel <- train(Status~.-ClientNo, data=EDA2[!is.na(EDA2$Salary),], trControl=train_control, method='nb')
+#print(rfcvmodel)
+```
+
+```{r}
+#predRF <- predict(rfcvmodel, newdata=EDA2Test)
+#table(predRF,EDA2Test$Status)
+```
+
+
+### EDA2 LDA
+
+```{r}
+ldamodel <- lda( Status ~ . -ClientNo, data=EDA2Train)
+```
+
+```{r}
+ldamodelvalues <- predict(ldamodel, newdata=EDA2Test)
+
+ldahist(ldamodelvalues$x[,1], g=EDA2Test$Status)
+```
+
+```{r}
+errormatrix(EDA2Test$Status, ldamodelvalues$class, relative=TRUE)
+```
+
+```{r}
+par(mar=c(0.1,0.1,0.1,0.1))
+partimat(Status ~ BenefitPayments+SinceLastCon+Duration+Balance, data=EDA2, method='lda')
+```
+
+
+# GEE Model
+
+```{r}
+geefit <- geeglm(Status~Duration+Gender+Age, id=ClientNo, data=EDA, family=binomial, corstr = "exchangeable")
+```
+
+can try gee aswell, change the corstr
+
+```{r}
+summary(EDA)
+#EDA$Salary[is.na(EDA$Salary)] <- 0
+```
+
+

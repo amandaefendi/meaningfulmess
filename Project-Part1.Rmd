@@ -1,0 +1,734 @@
+---
+title: "EDA-PreliminaryGraphs"
+author: "Amanda Efendi"
+date: "19/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+library(GGally)
+library(zoo)
+library(mondate)
+library(lubridate)
+library(tidyr)
+library(doBy)
+library(geepack)
+library(klaR)
+library(rattle)
+library(caret)
+```
+
+```{r LOAD MEMBERDATA}
+MemberData <- read.csv("Member_Data_OUTPUT.csv")
+```
+
+```{r LOAD OTHER DATASETS}
+AOLData <- read.csv("AOL_OUTPUT.csv")
+BenefitData <- read.csv("Benefit_Payments_OUTPUT.csv")
+RollinsData <- read.csv("Rollins_OUTPUT.csv")
+SuperClickData <- read.csv("SuperClick_Advice_OUTPUT.csv")
+CCData <- read.csv("CC_OUTPUT.csv")
+SeminarData <- read.csv("Seminar_OUTPUT.csv")
+WFAdvData <- read.csv("WF_Advice_OUTPUT.csv")
+```
+
+## Member Data
+
+```{r Summary of MemberData}
+#str(MemberData)
+```
+
+```{r Nrow of MemberData}
+nrow(MemberData)
+length(unique(MemberData$Client.Number.key))
+length(unique(MemberData$Member.Number.key))
+```
+
+```{r Modifying Datetypes for MemberData}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: Extraction Date, DJF and Exit Date
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+MemberData$Extract.Date <- "29/11/2019"
+MemberData$Extract.Date <- format(as.Date(MemberData$Extract.Date, "%d/%m/%Y"), "%d/%m/%Y")
+head(MemberData$Extract.Date)
+
+MemberData$DJF <- format(as.Date(MemberData$DJF,"%d/%m/%y"),"%d/%m/%Y");head(MemberData$DJF)
+
+MemberData$exit.date <- format(as.Date(MemberData$exit.date, format="%d/%m/%y"),"%d/%m/%Y"); head(MemberData$exit.date)
+```
+
+```{r Create LimitDate column and set default}
+#Default is Extract Date - 1 year
+#format(as.Date(MemberData$Extract.Date[1],'%d/%m/%Y') %m-% months(12), '%d/%m/%Y')
+MemberData$LimitDate <- format(as.Date("29/11/2018", format = '%d/%m/%Y'), "%d/%m/%Y")
+```
+
+```{r NULL check for exit dates}
+#how many exit dates are empty if the clients have a status of EXIT
+sum(is.na(MemberData$exit.date[MemberData$Status=="E"]))
+
+#total no of people who exit
+sum(nrow(MemberData[MemberData$Status=='E',]))
+```
+
+```{r Creating overall status for MemberData}
+repeats <- data.frame(table(MemberData$Client.Number.key))
+repeats <- repeats[repeats$Freq>"1",]
+MemberData$OverallStatus <- MemberData$Status
+
+for (i in 1:nrow(repeats)){
+  Client <- repeats$Var1[i]
+  MatchIdx <- which(MemberData$Client.Number.key %in% Client)
+  #MatchIdx IS already the matching index in EDA, so n is each multiple of ClientNo
+  mult_status <- length(unique(MemberData$Status[MatchIdx]))
+  #mult_status is 1 if all of the client's accounts are all C or all E. mult_status is 2 if a client has some C and some E accounts
+  if ((mult_status=="1")&&(("C"==unique(MemberData$Status[MatchIdx]))==TRUE)){
+    MemberData$OverallStatus[MatchIdx] <- "C"
+  }
+  else if ((mult_status=="1")&&(("E"==unique(MemberData$Status[MatchIdx]))==TRUE)){
+    MemberData$OverallStatus[MatchIdx] <- "E"
+  }
+  else if (mult_status>"1"){
+    MemberData$OverallStatus[MatchIdx] <- "C"
+  }
+}
+```
+
+```{r Add date to mark 1 year before}
+
+for (i in 1:nrow(MemberData)){
+  #if member is EXIT and has an exitdate, set limit to 6 months prior
+  if (MemberData$OverallStatus[i] == "E"){
+    MemberData$LimitDate[i] <- format(as.Date(MemberData$exit.date[i],
+                                              '%d/%m/%Y') %m-% months(12), '%d/%m/%Y')
+  }
+  #if member is CURRENT set limit to 6 months prior the extraction date...
+  else if (MemberData$OverallStatus[i] == "C"){
+    MemberData$LimitDate[i] <- "29/11/2018"
+  }
+}
+```
+
+```{r Initiliasing duration column}
+MemberData$DurationinWS <- "0"
+```
+
+```{r}
+duration_inmths <- function(){
+  for (i in 1:nrow(MemberData)){
+    if (MemberData$Status[i]=="C"){
+      dur <- (as.yearmon(strptime(MemberData$Extract.Date[i], format="%d/%m/%Y")) - as.yearmon(strptime(MemberData$DJF[i], format="%d/%m/%Y")))*12
+      MemberData$DurationinWS[i] <- round(dur)
+      }
+    else{
+      dur <- (as.yearmon(strptime(MemberData$exit.date[i], format="%d/%m/%Y")) - as.yearmon(strptime(MemberData$DJF[i], format="%d/%m/%Y")))*12
+      MemberData$DurationinWS[i] <- round(dur)
+    }
+  }
+  return(MemberData)
+}
+
+duration_inyrs <- function(){
+  for (i in 1:nrow(MemberData)){
+    if (MemberData$Status[i]=="C"){
+      dur <- year(strptime(MemberData$Extract.Date[i], format="%d/%m/%Y")) - year(strptime(MemberData$DJF[i], format="%d/%m/%Y"))
+      MemberData$DurationinWS[i] <- round(dur) 
+    }
+    else{
+      dur <- year(strptime(MemberData$exit.date[i], format="%d/%m/%Y")) - year(strptime(MemberData$DJF[i], format="%d/%m/%Y"))
+      MemberData$DurationinWS[i] <- round(dur) 
+    }
+  }
+  return(MemberData)
+}
+```
+
+```{r Create the duration column: in months or in years}
+MemberData <- duration_inmths()
+```
+
+```{r Testing date substraction functions, message=FALSE}
+mondate(as.Date("01/06/2000",'%d/%m/%Y')) -6 
+
+library(lubridate)
+format(as.Date("01/06/2000",'%d/%m/%Y') %m-% months(6), '%d/%m/%Y')
+```
+
+```{r Calculate number of LGAP account per client no}
+LGAPCount <- data.frame("ClientNo"=0, "LGAPCount"=0)
+LGSPCount <- data.frame("ClientNo"=0, "LGSPCount"=0)
+
+for (i in 1:nrow(MemberData)){
+  client <- MemberData$Client.Number.key[i]
+  fund <- MemberData$Fund[i]
+  if (fund == "LGAP"){
+    LGAPCount <- rbind(LGAPCount, c(client, "1"))
+  }
+  else if (fund=='LGSP'){
+    LGSPCount <- rbind(LGSPCount, c(client, "1"))
+  }
+  else{
+    NULL
+  }
+}
+
+LGAPCount <- data.frame(table(LGAPCount$ClientNo))
+colnames(LGAPCount) <- c("Client.No","LGAPCount") 
+LGSPCount <- data.frame(table(LGSPCount$ClientNo))
+colnames(LGSPCount) <- c("Client.No","LGSPCount") 
+```
+
+
+```{r Set balance ETP column for "E" clients}
+MemberData$FinalBalance <- "500"
+
+for (i in 1:nrow(MemberData)){
+  if (MemberData$Status[i]=="C"){
+    MemberData$FinalBalance[i] <- MemberData$Account.Balance[i]
+  }
+  else if ((MemberData$Status[i]=="E")&&(is.na(MemberData$Total.ETP[i])==FALSE)){
+    MemberData$FinalBalance[i] <- MemberData$Total.ETP[i]
+  }
+  else if ((MemberData$Status[i]=="E")&&(is.na(MemberData$Total.ETP[i])==TRUE)){
+    MemberData$FinalBalance[i] <- "000"
+  }
+}
+```
+
+```{r Delete clients with balance etp of 0 }
+MemberData <- MemberData[MemberData$FinalBalance!="000",]
+```
+
+
+## AOL Data
+
+```{r Summary of AOLData}
+str(AOLData)
+```
+
+```{r AOLData CampaignFlag levels}
+levels(AOLData$AOL_EventCampaignFlag)
+```
+
+```{r Modifying Datetypes for AOLData}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: timestamp
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+AOLData$timestamp <- format(as.Date(AOLData$timestamp,"%d/%m/%y"),"%d/%m/%Y");head(AOLData$timestamp)
+```
+
+```{r Append LimitDate AOL}
+#ALTERNATIVE 2
+#Append LimitDate to the Benefit Payment Dataset and count the occurence from there
+AOLData2 <- merge(AOLData, MemberData[,c(5,102)], by.x="Client.Number.key", by.y='Client.Number.key')
+AOLData2 <- unique(AOLData2)
+```
+
+```{r AOL Filter attempt 2}
+#ALTERNATIVE 2
+occurAOL <- data.frame("ClientNo"=0, "OccurFiltered"=0)
+
+for (i in 1:nrow(AOLData2)){
+  if (AOLData2$timestamp[i] > AOLData2$LimitDate[i]){
+    occurAOL <- rbind(occurAOL, c(AOLData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurAOL <- data.frame(table(occurAOL$ClientNo))
+colnames(occurAOL) <- c("Client.No","AOL.Freq") 
+```
+
+## Benefit Payment Data
+
+```{r}
+str(BenefitData)
+```
+```{r}
+#Number of observations with empty description for the BP
+nrow(BenefitData[BenefitData$Description=="",])
+```
+
+```{r Modifying Datetypes for BenefitData}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: Exit.date
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+BenefitData$Exit.Date <- format(as.Date(BenefitData$Exit.Date,"%d/%m/%y"),"%d/%m/%Y")
+head(BenefitData$Exit.Date)
+```
+
+```{r Append Limit Date BenefitPayment}
+#ALTERNATIVE 2
+#Append LimitDate to the Benefit Payment Dataset and count the occurence from there
+BenefitData2 <- merge(BenefitData, MemberData[,c(5,102)], by.x="Client.Number.key", by.y='Client.Number.key')
+BenefitData2 <- unique(BenefitData2)
+```
+
+```{r Filter attempt 2}
+#ALTERNATIVE 2
+occurBenefit <- data.frame("ClientNo"=0, "OccurFiltered"=0)
+
+for (i in 1:nrow(BenefitData2)){
+  if (BenefitData2$Exit.Date[i] > BenefitData2$LimitDate[i]){
+    occurBenefit <- rbind(occurBenefit, c(BenefitData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurBenefit <- data.frame(table(occurBenefit$ClientNo))
+colnames(occurBenefit) <- c("Client.No","Benefit.Freq")
+```
+
+
+## Roll-ins Data
+
+```{r}
+str(RollinsData)
+```
+
+```{r}
+RollinsData[6:30,]
+```
+
+```{r Modifying Datetypes for RollinsData}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: Effective.Date
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+RollinsData$Effective.Date <- format(as.Date(RollinsData$Effective.Date, "%d/%m/%y"),"%d/%m/%Y")
+head(RollinsData$Effective.Date)
+```
+
+```{r Append LimitDate for Rollins}
+#ALTERNATIVE 2
+#Append LimitDate to the Benefit Payment Dataset and count the occurence from there
+RollinsData2 <- merge(RollinsData, MemberData[,c(5,102)], by.x="Client.Number.key", by.y='Client.Number.key')
+RollinsData2 <- unique(RollinsData2)
+```
+
+```{r OCCUR ROLLINS final frequency dataset Filter attempt 2}
+#ALTERNATIVE 2
+occurRollins <- data.frame("ClientNo"=0, "OccurFiltered"=0)
+
+for (i in 1:nrow(RollinsData2)){
+  if (RollinsData2$Effective.Date[i] > RollinsData2$LimitDate[i]){
+    occurRollins <- rbind(occurRollins, c(RollinsData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurRollins <- data.frame(table(occurRollins$ClientNo))
+colnames(occurRollins) <- c("Client.No","Rollin.Freq")
+```
+
+
+## Super Click Advice Data
+
+See the page number, anything > 12, means they finished the superclick. Compare these 600 people with others who didnt finish.
+
+```{r Summary of SuperClick data}
+str(SuperClickData)
+```
+
+```{r Filter SuperClick to only pagenumber > 12}
+table(SuperClickData$Clean.Page.number)
+
+SuperClickData <- SuperClickData[SuperClickData$Clean.Page.number>11,]
+```
+
+
+```{r Modifying Datetypes for SuperClick Data}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: MaxOfStart.Time
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+SuperClickData$MaxOfStart.Time <- format(as.Date(SuperClickData$MaxOfStart.Time, "%d/%m/%y"),"%d/%m/%Y")
+head(SuperClickData$MaxOfStart.Time)
+```
+
+```{r Append LimitDate for SuperClick}
+#ALTERNATIVE 2
+#Append LimitDate to the Benefit Payment Dataset and count the occurence from there
+SuperClickData2 <- merge(SuperClickData, MemberData[,c(5,102)], by.x="Client.Number.key", by.y='Client.Number.key')
+SuperClickData2 <- unique(SuperClickData2)
+```
+
+```{r OCCUR SuperClick final frequency dataset Filter attempt 2}
+#ALTERNATIVE 2
+occurClicks <- data.frame("ClientNo"=0, "OccurFiltered"=0)
+
+for (i in 1:nrow(SuperClickData2)){
+  if (SuperClickData2$MaxOfStart.Time[i] > SuperClickData2$LimitDate[i]){
+    occurClicks <- rbind(occurClicks, c(SuperClickData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurClicks <- data.frame(table(occurClicks$ClientNo))
+colnames(occurClicks) <- c("Client.No","Click.Freq")
+```
+
+## Call Centre Data
+
+```{r Summary of Call Centre Data}
+str(CCData)
+```
+
+```{r Table of Frequency per Type of Call}
+table(CCData$Type)
+```
+
+```{r Modifying Datetypes for CallCentre Data}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: Date
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+CCData$Date <- format(as.Date(CCData$Date, "%d/%m/%y"),"%d/%m/%Y")
+head(CCData$Date)
+```
+
+```{r Append LimitDate for CCData}
+#ALTERNATIVE 2
+#Append LimitDate to the Benefit Payment Dataset and count the occurence from there
+CCData2 <- merge(CCData, MemberData[,c(5,102)], by.x="Client.Number.key", by.y='Client.Number.key')
+CCData2 <- unique(CCData2)
+```
+
+```{r OCCUR CALL final frequency dataset Filter attempt 2}
+#ALTERNATIVE 2
+occurCall <- data.frame("ClientNo"=0, "OccurFiltered"=0)
+
+for (i in 1:nrow(CCData2)){
+  if ((CCData2$Type[i]=="Phone in")&&(CCData2$Date[i] > CCData2$LimitDate[i])){
+    occurCall <- rbind(occurCall, c(CCData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurCall <- data.frame(table(occurCall$ClientNo))
+colnames(occurCall) <- c("Client.No","Call.Freq")
+```
+
+```{r OCCUR EMAIL final frequency dataset Filter attempt 2}
+#ALTERNATIVE 2
+occurEmail <- data.frame("ClientNo"=0, "OccurFiltered"=0)
+
+for (i in 1:nrow(CCData2)){
+  if ((CCData2$Type[i]=="Email in")&&(CCData2$Date[i] > CCData2$LimitDate[i])){
+    occurEmail <- rbind(occurEmail, c(CCData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurEmail <- data.frame(table(occurEmail$ClientNo))
+colnames(occurEmail) <- c("Client.No","Email.Freq")
+```
+
+## WF Advice Data
+
+```{r}
+str(WFAdvData)
+```
+
+```{r Modifying Datetypes for WF Data}
+#MODIFYING DATETYPES FOR ALL DATE COLUMNS: FA.SOA.date and FA.Annual.Review.Date
+#Chosen format is date, month and year. so 07/01/1993 means 7th January 1993
+
+WFAdvData$FA.SOA.date <- format(as.Date(WFAdvData$FA.SOA.date, "%d/%m/%y"),"%d/%m/%Y")
+
+WFAdvData$FA.Annual.Review.Date <- format(as.Date(WFAdvData$FA.Annual.Review.Date,"%m/%d/%y"),"%d/%m/%Y")
+```
+
+```{r Append LimitDate for WFAdvice Data}
+#Append LimitDate to the WF Advice Dataset and count the occurence from there
+WFAdvData2 <- merge(WFAdvData, MemberData[,c(5,102)], by.x="Client.Number.key", by.y='Client.Number.key')
+WFAdvData2 <- unique(WFAdvData2)
+```
+
+```{r occurSOA}
+occurSOA <- data.frame("ClientNo"=0, "SOA"=0)
+
+for (i in 1:nrow(WFAdvData2)){
+  if ((WFAdvData2$FA.SOA[i]=="FA SOA")&&(WFAdvData2$FA.SOA.date[i] > WFAdvData2$LimitDate[i])){
+    occurSOA <- rbind(occurSOA, c(WFAdvData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurSOA <- data.frame(table(occurSOA$ClientNo))
+colnames(occurSOA) <- c("Client.No","SOA.Freq")
+```
+
+```{r occurAR}
+occurAR <- data.frame("ClientNo"=0, "AR"=0)
+
+for (i in 1:nrow(WFAdvData2)){
+  if (WFAdvData2$FA.Annual.Review[i]=="FA Annual Review SOA"){
+    occurAR <- rbind(occurAR, c(WFAdvData2$Client.Number.key[i],"1"))
+  }
+  else{
+    NULL
+  }
+}
+
+occurAR <- data.frame(table(occurAR$ClientNo))
+colnames(occurAR) <- c("Client.No","AR.Freq")
+```
+
+
+# MERGE DATA
+
+```{r}
+MergeMain <- function(df1, df2){
+  #do left outer join
+  df3 <- merge(df1, df2, by.x="Client.Number.key", by.y="Client.No", all.x=TRUE)
+  #change all NA values to 0, ncol(df3) leads to the last col in the df
+  df3[ is.na(df3[,ncol(df3)]), ncol(df3) ] <- "0"
+  return(df3)
+}
+```
+
+```{r Merge using function}
+merge1 <- MergeMain(MemberData, occurBenefit)
+merge1 <- MergeMain(merge1, occurCall)
+merge1 <- MergeMain(merge1, occurEmail)
+merge1 <- MergeMain(merge1, occurClicks)
+merge1 <- MergeMain(merge1, occurAOL)
+merge1 <- MergeMain(merge1, occurRollins)
+merge1 <- MergeMain(merge1, LGAPCount)
+merge1 <- MergeMain(merge1, LGSPCount)
+merge1 <- MergeMain(merge1, occurSOA)
+merge1 <- MergeMain(merge1, occurAR)
+```
+
+# Create Main Dataset from merge1
+
+```{r EDA}
+EDA <- data.frame("ClientNo"=merge1$Client.Number.key,
+                  "Status"=merge1$OverallStatus,
+                  "Duration"=as.numeric(merge1$DurationinWS),
+                  "Fund"=merge1$Fund,
+                  "Gender"=merge1$Sex,
+                  "Age"=merge1$Age,
+                  "Lifestage"=merge1$Lifestage,
+                  "Salary"=merge1$Salary,
+                  "Balance"=as.numeric(merge1$FinalBalance),
+                  "HasLGAP"=as.numeric(merge1$LGAPCount),
+                  "HasLGSP"=as.numeric(merge1$LGSPCount),
+                  "Insurance"=as.factor(merge1$Has.Insurance),
+                  "BenefitPayments"=as.numeric(merge1$Benefit.Freq),
+                  "CallFreq"=as.numeric(merge1$Call.Freq),
+                  "EmailFreq"=as.numeric(merge1$Email.Freq),
+                  "SuperClickAdvice"=as.numeric(merge1$Click.Freq),
+                  "AOLFreq"=as.numeric(merge1$AOL.Freq),
+                  "RollinsFreq"=as.numeric(merge1$Rollin.Freq),
+                  "SOAFreq"=as.numeric(merge1$SOA.Freq),
+                  "ARFreq"=as.numeric(merge1$AR.Freq),
+                  "Voluntary"=as.factor(merge1$Members.Contributing.),
+                  "SinceLastCon"=as.factor(merge1$Last.Contribution)
+                  )
+```
+
+```{r List of client numbers that have multiples in EDA}
+repeats <- data.frame(table(EDA$ClientNo))
+repeats <- repeats[repeats$Freq>"1",]
+```
+
+```{r Create overall balance for multiple accounts using sum finalbalance}
+for (i in 1:nrow(repeats)){
+  Client <- repeats$Var1[i]
+  MatchIdx <- which(EDA$ClientNo %in% Client)
+  EDA$Balance[MatchIdx] <- sum(EDA$Balance[MatchIdx])
+}
+```
+
+```{r getting rid of the other observations}
+EDA <- EDA[firstobs(EDA[,1]),]
+```
+
+```{r To check if there is any N/A or 0 balance for Exit members}
+summary(EDA$Balance[EDA$Status=="E"])
+```
+
+# EDA Graphs
+
+```{r fig.height=15, fig.width=17, message=FALSE, warning=FALSE}
+
+#Plotting GGPairs
+p <- ggpairs(EDA, aes(colour=EDA$Status, alpha=0.9), diag = list(continuous =
+  "densityDiag", discrete = "barDiag", na = "naDiag"))
+
+
+#Manually changing the colour
+for(i in 1:p$nrow) {
+  for(j in 1:p$ncol){
+    p[i,j] <- p[i,j] + 
+        scale_fill_manual(values=c("#87C184", "#ED6D6D")) +
+        scale_color_manual(values=c("#87C184", "#ED6D6D"))  
+  }
+}
+
+p
+```
+
+```{r fig.height=5, fig.width=7, message=FALSE, warning=FALSE}
+
+#Plotting GGPairs
+p <- ggpairs(EDA[,2:12], aes(colour=EDA$Status, alpha=0.9), diag = list(continuous =
+  "densityDiag", discrete = "barDiag", na = "naDiag"))
+
+
+#Manually changing the colour
+for(i in 1:p$nrow) {
+  for(j in 1:p$ncol){
+    p[i,j] <- p[i,j] + 
+        scale_fill_manual(values=c("#87C184", "#ED6D6D")) +
+        scale_color_manual(values=c("#87C184", "#ED6D6D"))  
+  }
+}
+
+p
+```
+
+```{r fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+
+#Plotting GGPairs
+p <- ggpairs(EDA[,c(c(2,3,8,9),13:16)], aes(colour=EDA$Status, alpha=0.9), diag = list(continuous =
+  "densityDiag", discrete = "barDiag", na = "naDiag"))
+
+
+#Manually changing the colour
+for(i in 1:p$nrow) {
+  for(j in 1:p$ncol){
+    p[i,j] <- p[i,j] + 
+        scale_fill_manual(values=c("#87C184", "#ED6D6D")) +
+        scale_color_manual(values=c("#87C184", "#ED6D6D"))  
+  }
+}
+
+p
+```
+
+```{r fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+
+#Plotting GGPairs
+p <- ggpairs(EDA[,c(c(2,3,8,9),17:22)], aes(colour=EDA$Status, alpha=0.9), diag = list(continuous =
+  "densityDiag", discrete = "barDiag", na = "naDiag"))
+
+
+#Manually changing the colour
+for(i in 1:p$nrow) {
+  for(j in 1:p$ncol){
+    p[i,j] <- p[i,j] + 
+        scale_fill_manual(values=c("#87C184", "#ED6D6D")) +
+        scale_color_manual(values=c("#87C184", "#ED6D6D"))  
+  }
+}
+
+p
+```
+
+```{r Age and Status}
+wilcox.test(Age~Status, data=EDA)
+
+p = ggplot(EDA, aes(x=Status, y=Age, fill=Status)) +geom_violin() +geom_boxplot(width=0.1) +ggtitle("Age distribution based on client status");p
+```
+
+```{r Gender and Status}
+p = ggplot(EDA, aes(x=Gender, fill=Status))+geom_bar(stat="count", position="dodge");p
+chisq.test(EDA$Gender, EDA$Status)
+```
+
+```{r Duration and Status}
+p = ggplot(EDA, aes(x=Status, y=Duration, fill=Status))+geom_violin(alpha=0.4)+ geom_boxplot(width=0.03, outlier.size=1, outlier.alpha=0.4)+ggtitle("Duration distribution based on client status")
+
+p
+
+wilcox.test(Duration~Status, data=EDA)
+```
+
+```{r}
+p = ggplot(EDA, aes(x=Status, y=log(Salary), fill=Status))+geom_violin(alpha=0.4)+ geom_boxplot(width=0.03, outlier.size=1, outlier.alpha=0.4)+ggtitle("Salary distribution based on client status")
+
+p
+```
+
+```{r Lifestage and Status}
+p = ggplot(EDA, aes(x=Lifestage, fill=Status))+geom_bar(stat="count", position="dodge") + ggtitle("Distribution of lifestage based on client status")
+p + theme(axis.text.x = element_text(angle=45))
+
+chisq.test(EDA$Lifestage, EDA$Status)
+#change the labels
+```
+
+```{r Benefit Payments and Status}
+p = ggplot(EDA, aes(x=Status, y=BenefitPayments, fill=Status)) + geom_violin() + geom_boxplot(width=0.1);p
+
+wilcox.test(BenefitPayments~Status, data=EDA)
+```
+
+```{r Balance and Status}
+p = ggplot(EDA, aes(x=Status, y=Balance, fill=Status)) + geom_violin() + geom_boxplot(width=0.1);p
+
+wilcox.test(Balance~Status, data=EDA)
+```
+
+```{r Setup EDA1 and callfreq plot}
+#EDA1 to eliminate Call Freq outlier
+EDA1 <- EDA[EDA$CallFreq<5,]
+p = ggplot(EDA1, aes(x=CallFreq, fill=Status))+geom_density();p
+
+wilcox.test(CallFreq~Status, data=EDA)
+
+summaryBy(CallFreq~Status, data=EDA, FUN = function(x) {quantile(x,c(0.99,0.999,0.9993,0.9997))})
+```
+
+```{r Email Freq and Status}
+p = ggplot(EDA[0<EDA$EmailFreq,], aes(x=EmailFreq, fill=Status))+geom_bar()+ggtitle("Distirbution of email frequency based on client status");p
+#p = ggplot(EDA[0<EDA$EmailFreq<10,], aes(x=EmailFreq, fill=Status))+geom_bar();p
+
+wilcox.test(EmailFreq~Status, data=EDA)
+```
+
+```{r SuperClick advice and Status}
+p = ggplot(EDA[0<EDA$SuperClickAdvice,], aes(x=SuperClickAdvice, fill=Status))+geom_bar();p
+
+wilcox.test(SuperClickAdvice~Status, data=EDA)
+
+table(EDA$SuperClickAdvice)
+```
+
+```{r AOL and Status}
+p = ggplot(EDA[EDA$AOLFreq<10,], aes(x=AOLFreq, fill=Status))+geom_density(alpha=0.5);p
+p = ggplot(EDA[EDA$AOLFreq<3,], aes(x=AOLFreq, fill=Status))+geom_density(alpha=0.5);p
+```
+
+```{r Rollins and Status}
+p = ggplot(EDA, aes(x=RollinsFreq, fill=Status))+geom_density(alpha=0.5);p
+p = ggplot(EDA[EDA$RollinsFreq<5,], aes(x=RollinsFreq, fill=Status))+geom_density(alpha=0.5);p
+```
+
+```{r Statement of Advice and Status}
+table(EDA$SOAFreq)
+```
+
+```{r Financial Advice and Status}
+table(EDA$ARFreq)
+```
+
+
