@@ -10,8 +10,8 @@ CONTENTS:
     - Exploratory analyses of the final merged dataset and statistical testings
   
 - RMD File: Project part 2
-  Modelling process
-  Decision Tree, Random Forest, Logistic Regression, Support Vector Machine, Linear Discriminant Analysis
-  Visualisation of results and confusion matrices
+    - Modelling process
+    - Decision Tree, Random Forest, Logistic Regression, Support Vector Machine, Linear Discriminant Analysis
+    - Visualisation of results and confusion matrices
 
   
