@@ -16,9 +16,9 @@ Running simulations of several oil reservoirs using their parameters to try to e
 ## Evaluating Efficiency of Several Machine Learning Algorithm 2019 - R
 SVM, LDA, Logistic, etc (STAT2003)
 
-## Second STAT2003 project
+## SVM and ANN Efficiency Test on Simulated Time Series Data 2019 - R
 
-## WA Super 2019
+## WA Super 2019 - R
 Find the characteristics and activity trends of clients who are about to exit the superfund
 
   
