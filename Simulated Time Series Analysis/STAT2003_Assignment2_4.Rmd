@@ -1,0 +1,308 @@
+---
+title: "STAT2003 - Assignment 2"
+author: "Amanda Efendi & Nina Kumagai"
+date: "13/10/2019"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Stationary Case
+```{r}
+stationary = read.csv("stationary.csv", header = TRUE, row.names = 1)
+```
+
+```{r}
+head(stationary)
+```
+
+```{r} 
+st_anova = aov((1/MAPE) ~ phi * theta * Method, data = stationary)
+```
+
+```{r}
+summary(st_anova)
+```
+
+```{r}
+step(st_anova)
+```
+
+```{r}
+library(FrF2)
+#MEPlot(st_anova)
+```
+
+
+# Non-Stationary Case
+```{r}
+nonstationary = read.csv("non-stationary.csv", header = TRUE, row.names = 1)
+```
+
+```{r}
+head(nonstationary)
+```
+
+```{r}
+non_st_anova = aov(MAPE ~ theta * Method, data = nonstationary)
+```
+
+```{r}
+summary(non_st_anova)
+```
+
+```{r}
+step(non_st_anova)
+```
+
+```{r}
+library(FrF2)
+MEPlot(non_st_anova)
+```
+
+Check for Normality and Homogeneity of Variance
+
+
+High theta and low theta error is other way around for the STAT2003 assignment Q1 because inversing the model will make larger errors small and small errors large. This means that it is now the larger errors that show smaller error!
+
+Make sure to use multidimensional krigging in the second question of the assignment. 
+
+
+Applying inverse on non-stationary actually makes it fail the Levene test of homogeneity although it makes up for the other assumption of normality. But Levene homogeneity of variance is arguably the more important assumption to hold.
+
+Thus the article does both stationary and non-stationary cases wrong!
+
+
+# Question 2
+# Simulating ARMA and IMA (ARIMA)
+
+```{r message = FALSE}
+library(mvtnorm)
+library(e1071)
+```
+
+```{r}
+#rho <- -0.9
+##rho <- 0.9
+#mu <- c(0.01,0.01)
+#theta <- c(-0.9,0.9)
+#d <- ts(matrix(0,ncol=2,nrow=1001))
+#e <- ts(rmvnorm(1001,sigma=cbind(c(400,rho*400),c(rho*400,400))))
+#for(i in 2:1001)
+# d[i,] <- mu + d[i-1,] - theta*(e[i-1,]+e[i,])
+
+#par(mfrow=c(1,2))
+#plot(d[,1]);plot(d[,2])
+```
+
+## Stationary Process
+
+```{r}
+#Stationary process
+#y <- arima.sim(n=100, model=list(ar=c(-0.9,0.9), ma=c(-0.9,0.9)), rand.gen=rnorm)]
+set.seed(61)
+arma.sim <- arima.sim(model=list(ar=-0.9,ma=-0.9),n=51)
+arma.sim
+ts.plot(arma.sim)
+```
+
+## simulating data
+
+```{r}
+# Simulate ARIMA based on the phi and theta parameter as function input
+# Output the result as a 51x1 matrix with each row having 51 sequences of ts data
+
+simData <- function(phi,theta){
+  all_training=NULL
+  for (i in 1:50){
+    arimaSet = arima.sim(model=list(ar=phi, ma=theta),n=51)
+    all_training = rbind(all_training, arimaSet[1:51])
+  }
+  return(all_training)
+}
+```
+
+```{r}
+#LLdata means low setting for both phi and theta
+#LLdata has 50 rows and 51 columns
+set.seed(61)
+LLdata = simData(-0.9,-0.9)
+LHdata = simData(-0.9,0.9)
+HHdata = simData(0.9, 0.9)
+HLdata = simData(0.9, -0.9)
+```
+
+## start SVM prediction using first row
+
+```{r}
+# training data is column 1 to 50
+# test data is column 51st
+# we only use the first row to test out.. not sure how to run all 50 rows..
+trainSVMDat = data.frame(timestamp=c(seq(1,50,1)),value=LHdata[1,1:50])
+testSVMDat = data.frame(timestamp=1,value=LHdata[1,51])
+```
+
+```{r}
+# svm(y~x,data=training)
+# the epsilon, gamma and cost values were taken from the paper
+# the syntax we used is "to predict value using timestamp"
+# predict(trainingmodel, newdata=testset)
+LHmodelSVM = svm(value~timestamp,data=trainSVMDat,epsilon=0.1,gamma=0.1,cost=10)
+LHpredSVM = predict(LHmodelSVM,newdata=testSVMDat); LHpredSVM
+```
+
+```{r}
+# MAPE is the prediction - actual data squared divided by the number of rows put into SVM (?)
+MAPE = ((LHpredSVM - testSVMDat[,2])^2)/1; MAPE
+```
+
+### start SVM prediction with SECOND row
+
+```{r}
+# using the second row from LHdata
+# this is not the same setting as the first trial above (LL), this is (LH)
+trainSVMDat = data.frame(timestamp=c(seq(1,50,1)),value=LHdata[2,1:50])
+testSVMDat = data.frame(timestamp=1,value=LHdata[2,51])
+```
+
+```{r}
+LHmodelSVM = svm(value~timestamp,data=trainSVMDat,epsilon=0.1,gamma=0.1,cost=10)
+LHpredSVM = predict(LHmodelSVM,newdata=testSVMDat); LHpredSVM
+```
+
+```{r}
+# MAPE is the prediction - actual data squared divided by the number of rows put into SVM (?)
+MAPE = ((LHpredSVM - testSVMDat[,2])^2)/1; MAPE
+```
+
+### Function for automating the generation of MAPE values in SVM (Nina did after Basement Cafe :))
+
+```{r}
+
+calc_mape = function(data_name){
+  mape_matrix = NULL
+  for (i in 1:50){
+      trainSVMDat = data.frame(timestamp=c(seq(1,50,1)),value=data_name[i,1:50])
+      testSVMDat = data.frame(timestamp=1,value=data_name[i,51])
+      modelSVM = svm(value~timestamp,data=trainSVMDat,epsilon=0.1,gamma=0.1,cost=10)
+      predSVM = predict(modelSVM,newdata=testSVMDat)
+      MAPE = (LLpredSVM - testSVMDat[,2])/LLpredSVM
+      mape_matrix = rbind(mape_matrix, MAPE)
+  }
+  #label <- paste("MAPE", data_name, sep = "_")
+  #assign(label, mape_matrix)
+  return (mean(mape_matrix))
+}
+```
+
+```{r}
+calc_mape(LLdata)
+```
+
+```{r}
+mape_matrix
+```
+
+
+
+```{r}
+for (i in 1:25){
+  
+    #HL
+    HLmodelSVM = svm(value~timestamp,data=trainSVMDat,epsilon=0.1,gamma=0.1,cost=10)
+    HLpredSVM = predict(HLmodelSVM,newdata=testSVMDat); HLpredSVM
+    MAPE_HL = ((HLpredSVM - testSVMDat[,2])^2)/1; MAPE_HL
+    label <- paste("MAPE_HL", i, sep = "_")
+    assign(label, MAPE_HL)
+    
+    #LH
+    LHmodelSVM = svm(value~timestamp,data=trainSVMDat,epsilon=0.1,gamma=0.1,cost=10)
+    LHpredSVM = predict(LHmodelSVM,newdata=testSVMDat); LHpredSVM
+    MAPE_LH = ((LHpredSVM - testSVMDat[,2])^2)/1; MAPE_LH
+    label <- paste("MAPE_LH", i, sep = "_")
+    assign(label, MAPE_LH)
+    
+    #HH
+    HHmodelSVM = svm(value~timestamp,data=trainSVMDat,epsilon=0.1,gamma=0.1,cost=10)
+    HHpredSVM = predict(HHmodelSVM,newdata=testSVMDat); HHpredSVM
+    MAPE_HH = ((HHpredSVM - testSVMDat[,2])^2)/1; MAPE_HH
+    label <- paste("MAPE_HH", i, sep = "_")
+    assign(label, MAPE_HH)
+```
+
+
+
+```{r}
+MAPE_LL_1
+MAPE_LL_2
+MAPE_LL_3
+MAPE_LL_4
+MAPE_LL_5
+
+MAPE_HL_1
+MAPE_HL_2
+MAPE_HL_3
+MAPE_HL_4
+MAPE_HL_5
+
+MAPE_LH_1
+MAPE_LH_2
+MAPE_LH_3
+MAPE_LH_4
+MAPE_LH_5
+
+MAPE_HH_1
+MAPE_HH_2
+MAPE_HH_3
+MAPE_HH_4
+MAPE_HH_5
+
+```
+
+```{r}
+svm_stationary = data.frame(rbind(
+cbind(1, -0.9, -0.9, "SVM", MAPE_LL_1),
+cbind(2, -0.9, -0.9, "SVM", MAPE_LL_2),
+cbind(3, -0.9, -0.9, "SVM", MAPE_LL_3),
+cbind(4, -0.9, -0.9, "SVM", MAPE_LL_4),
+cbind(5, -0.9, -0.9, "SVM", MAPE_LL_5),
+cbind(6, 0.9, -0.9, "SVM", MAPE_HL_1),
+cbind(7, 0.9, -0.9, "SVM", MAPE_HL_2),
+cbind(8, 0.9, -0.9, "SVM", MAPE_HL_3),
+cbind(9, 0.9, -0.9, "SVM", MAPE_HL_4),
+cbind(10, 0.9, -0.9, "SVM", MAPE_HL_5),
+cbind(11, -0.9, 0.9, "SVM", MAPE_LH_1),
+cbind(12, -0.9, 0.9, "SVM", MAPE_LH_2),
+cbind(13, -0.9, 0.9, "SVM", MAPE_LH_3),
+cbind(14, -0.9, 0.9, "SVM", MAPE_LH_4),
+cbind(15, -0.9, 0.9, "SVM", MAPE_LH_5),
+cbind(16, 0.9, 0.9, "SVM", MAPE_HH_1),
+cbind(17, 0.9, 0.9, "SVM", MAPE_HH_2),
+cbind(18, 0.9, 0.9, "SVM", MAPE_HH_3),
+cbind(19, 0.9, 0.9, "SVM", MAPE_HH_4),
+cbind(20, 0.9, 0.9, "SVM", MAPE_HH_5)))
+```
+
+```{r}
+colnames(svm_stationary) = c("Order", "phi", "theta", "Method", "MAPE")
+```
+
+```{r}
+rownames(svm_stationary) <- NULL
+```
+
+```{r}
+head(svm_stationary)
+```
+
+# Multi-dimensional krigging
+# Linear (ANOVA)
+
+# Optimality (finding best design)
+
+```{r}
+
+```
+

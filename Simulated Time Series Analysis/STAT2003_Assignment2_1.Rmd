@@ -1,0 +1,61 @@
+---
+title: "STAT2003 - Assignment 2"
+author: "Amanda Efendi & Nina Kumagai"
+date: "13/10/2019"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# ASSIGNMENT PART 1
+
+Re-do the exact experiment in the paper using Table 1 and Table 3 for both stationary and non-stationary.
+
+
+# ASSIGNMENT PART 2
+
+## Simulating ARMA and IMA (ARIMA)
+
+```{r message = FALSE}
+library(mvtnorm)
+```
+
+```{r}
+#rho <- -0.9
+##rho <- 0.9
+#mu <- c(0.01,0.01)
+#theta <- c(-0.9,0.9)
+#d <- ts(matrix(0,ncol=2,nrow=1001))
+#e <- ts(rmvnorm(1001,sigma=cbind(c(400,rho*400),c(rho*400,400))))
+#for(i in 2:1001)
+# d[i,] <- mu + d[i-1,] - theta*(e[i-1,]+e[i,])
+
+#par(mfrow=c(1,2))
+#plot(d[,1]);plot(d[,2])
+```
+
+## Stationary Process
+
+```{r}
+#Stationary process
+#y <- arima.sim(n=100, model=list(ar=c(-0.9,0.9), ma=c(-0.9,0.9)), rand.gen=rnorm)
+arma.sim <- arima.sim(model=list(ar=c(.9,-.2),ma=c(-.7,.1)),n=100)
+ts.plot(arma.sim)
+```
+
+# What to do next?
+
+- with each of the simulated data above
+- run ANN and SVM on each data set: according to the experimental design 2^3 5 rep
+- /?/??////????///??/
+
+
+# Calculate MAPE
+
+```{r}
+abs((actual-predict)/actual)
+```
+
+
