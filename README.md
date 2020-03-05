@@ -13,8 +13,8 @@ Creating an input based program that can display and provide customised outputs 
 ## Estimating GIIP Values by Simulation 2019 - R
 Running simulations of several oil reservoirs using their parameters to try to estimate the actual oil volume inside
 
-## Evaluating Efficiency of Several Machine Learning Algorithm 2019 - R
-SVM, LDA, Logistic, etc (STAT2003)
+## Bank Note Classification 2019 - R
+Classifying bank notes into real and fake using several machine learning algorithms SVM, LDA, Logistic, etc and test their efficiency (STAT2003)
 
 ## SVM and ANN Efficiency Test on Simulated Time Series Data 2019 - R
 
