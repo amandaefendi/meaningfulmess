@@ -129,6 +129,7 @@ varImpPlot(rfmodel, main='Variable Importance based on Random Forest')
 ```
 
 ```{r}
+# Confusion matrix visualisation code
 ctable <- as.table(matrix(c(49536, 131, 92, 13997), nrow = 2, byrow = TRUE))
 fourfoldplot(ctable, color = c("#CC6666", "#99CC99"),
              conf.level = 0, margin = 1, main = "Confusion Matrix RF EDA")
@@ -146,7 +147,7 @@ summary(logmodel)
 anova(logmodel, test='Chisq')
 ```
 
-### EDA LDA
+### EDA LDA (NPW)
 
 ```{r}
 library(MASS)
@@ -170,6 +171,7 @@ partimat(Status ~ . -ClientNo, data=EDA, method='lda')
 # Making EDA2 less variables from EDA
 
 ```{r Narrowing variables down to top 7}
+# Top 7 variables obtained from the VarImpPlot from RF results
 EDA2 <- data.frame("ClientNo"=merge1$Client.Number.key,
                   "Status"=merge1$OverallStatus,
                   "Duration"=as.numeric(merge1$DurationinWS),
@@ -281,7 +283,7 @@ partimat(Status ~ BenefitPayments+SinceLastCon+Duration+Balance, data=EDA2, meth
 ```
 
 
-# GEE Model
+# GEE Model (NPW)
 
 ```{r}
 geefit <- geeglm(Status~Duration+Gender+Age, id=ClientNo, data=EDA, family=binomial, corstr = "exchangeable")
