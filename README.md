@@ -14,11 +14,11 @@ Creating an input based program that can display and provide customised outputs 
 Running simulations of several oil reservoirs using their parameters to try to estimate the actual oil volume inside
 
 - Bank Note Classification 2019 - R
-Classifying bank notes into real and fake using several machine learning algorithms SVM, LDA, Logistic, etc and test their efficiency (STAT2003)
+Classifying bank notes into real and fake using several machine learning algorithms SVM, LDA, Logistic, etc and test their efficiency
 
 - SVM and ANN Efficiency Test on Simulated Time Series Data 2019 - R
 
 - WA Super 2019 - R
-Find the characteristics and activity trends of clients who are about to exit the superfund
+Create classification model that can predict the likelihood of a client exiting the superfund based on their demographic and superannuation engagement trend data
 
   
