@@ -28,5 +28,6 @@ A repository of my past data science projects!
 - WA Super 2019
     - R Studio
     - Create classification model that can predict the likelihood of a client exiting the superfund based on their demographic and superannuation engagement trend data
+    - Categorical classification models used: Decision Tree, Random Forest and Logistic Regression
 
   
