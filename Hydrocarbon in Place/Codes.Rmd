@@ -1,0 +1,343 @@
+---
+title: "Hydrocarbon in Place"
+author: "Yanan Cheah & Amanda Efendi"
+date: "23/05/2019"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mc2d)
+library(EnvStats)
+library(corrplot)
+```
+
+#DISTRIBUTIONS FOR THE PARAMETER
+
+## NTG with Triangular distribution
+
+```{r}
+# Net to Gross
+#plot(seq(0.704761905,1, by=0.001),dtriang(seq(0.704761905,1, by=0.001), min=0.704761905, mode=0.881, max=1), type='h', main='Distribution of NTG values', ylab='density', xlab='NTG values')
+```
+
+## GRV With Triangular distribution
+
+```{r}
+# GRV
+#plot(seq(2352,4368), dtri(seq(2352,4368), min=2352, mode=3360, max=4368), type='h', ylab='density??', xlab='GRV Values/e+05', main='Distribution of GRV values')
+```
+
+## POR With normal distribution
+
+```{r}
+# POR is porosity
+#par(pty='m') 
+#plot(seq(0.15,0.245, by=0.001), dnorm(seq(0.15,0.245,by=0.001), mean = 0.1985, sd = 0.0136), type='h', lty=1.5, ylab='Density', xlab='Porosity values', main='Distribution of porosity')
+```
+
+
+#PART 1 - SIMULATE GIIP FOR 1 FIELD
+
+##FORMULA TO FIND GIIP
+
+$$
+GIIP = (GRV*NTG*POR*SAT*35.3)/BG
+$$
+
+Don't forget to times 10^5 as GRV was divided by 10^5 intially.
+
+##CORE FUNCTION
+```{r}
+#GRV_p1=c(2352,3360,4368)
+#NTG_p1=c(0.704761905,0.881,1)
+#POR_p1=c(0.1985,0.0136) #ASSUMPTION: medium value is the mu
+#SAT_p1=c(0.72, 0.8, 0.88)
+```
+
+```{r}
+#CORE FUNCTION
+set.seed(127)
+
+simulate <- function(grv, ntg, por, sat){
+  GIIP = NULL
+  
+  for (i in 1:1000){
+  GRV <- rtri(1, min=grv[1], mode=grv[2], max=grv[3])*10^5
+  NTG <- rtri(1, min=ntg[1], mode=ntg[2], max=ntg[3])
+  POR <- rnorm(1, mean=por[1], sd=por[2])
+  SAT <- rtri(1, min=sat[1], mode=sat[2], max=sat[3])
+  BG <- 0.004
+  
+  GIIP[i] <- (GRV*NTG*POR*SAT*35.3)/BG
+  }
+  
+  return(GIIP)
+}
+
+```
+
+##WRAPPER FUNCTION 1 - SIMULATE FOR ALL FIELDS
+```{r}
+##WRAPPER FUNCTION 2
+#Store all GRV parameters for 5 fields into 1 vector, etc
+
+GRV_p <- matrix(data=c(2352,3360,4368,9534,13620,17706,2393,3290,4277,2114,3020,3926,2709,3870,5031), nrow=5, ncol=3, byrow=TRUE)
+NTG_p <- matrix(data=c(0.704761905,0.881,1,0.464,0.58,0.696,0.536,0.67,0.804,0.7576,0.947,1,0.62,0.775,0.93), nrow=5, ncol=3, byrow=TRUE)
+POR_p <- matrix(data=c(0.1985,0.0136,0.2286,0.0134,0.2052,0.0126,0.2181,0.0197,0.2286, 0.0134), nrow=5, ncol=2, byrow=TRUE)
+SAT_p <- matrix(data=c(0.7,0.8,0.9,0.65,0.75,0.85,0.65,0.75,0.85,0.6,0.7,0.8,0.75,0.85,0.95), nrow=5, ncol=3, byrow=TRUE)
+BG_p <- 0.004
+
+set.seed(127)
+
+getall_GIIP <- function(){
+  all_GIIP = NULL
+  
+  for (i in 1:5){
+    GIIP <- simulate(GRV_p[i,], NTG_p[i,], POR_p[i,], SAT_p[i,])
+    all_GIIP <- cbind(all_GIIP,GIIP)
+  }
+  return(all_GIIP)
+}
+```
+
+###Test wrapper function - done
+```{r}
+set.seed(127)
+GIIP_all <- getall_GIIP()
+colnames(GIIP_all) <- c("GIIP_Mung","GIIP_LBG","GIIP_Murr","GIIP_Oxf","GIIP_Nimb")
+set.seed(127)
+test <- simulate(GRV_p[1,], NTG_p[1,], POR_p[1,], SAT_p[1,])
+```
+
+##Regression formula for GIIP
+$$
+GIIP_{Mung} = c + \theta_{GRV} X_{GRV} + \theta_{NTG} X_{NTG} + \theta_{POR} X_{POR} + \theta_{SAT} X_{SAT}
+$$
+
+#PART 2 - AGGREGATION
+
+GIIPref: GRV medium value
+GIIPlo: GRV low value
+GIIPhi: GRV high value
+
+swing for grv is GIIPhi - GIIPlo
+
+repeat for other variables :)
+
+```{r}
+swingGRV <- function(){
+  swGRV = NULL
+  
+  for (i in 1:3){
+    GIIPref <- (GRV_p[i,2]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    GIIPlo <- (GRV_p[i,1]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    GIIPhi <- (GRV_p[i,3]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    swGRVi = GIIPhi - GIIPlo
+    swGRV[i] = swGRVi
+    }
+  return(swGRV)
+}
+
+swingNTG <- function(){
+  swNTG = NULL
+  
+  for (i in 1:3){
+    GIIPref <- (GRV_p[i,2]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    GIIPlo <- (GRV_p[i,2]*NTG_p[i,1]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    GIIPhi <- (GRV_p[i,2]*NTG_p[i,3]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    swNTGi = GIIPhi - GIIPlo
+    swNTG[i] = swNTGi
+    }
+  return(swNTG)
+}
+
+swingPOR <- function(){
+  swPOR = NULL
+  
+  for (i in 1:3){
+    GIIPref <- (GRV_p[i,2]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    GIIPlo <- (GRV_p[i,2]*NTG_p[i,2]*(POR_p[i,1]-(2*POR_p[i,2]))*SAT_p[i,2]*35.3)/BG_p
+    GIIPhi <- (GRV_p[i,2]*NTG_p[i,2]*(POR_p[i,1]+(2*POR_p[i,2]))*SAT_p[i,2]*35.3)/BG_p
+    swPORi = GIIPhi - GIIPlo
+    swPOR[i] = swPORi
+    }
+  return(swPOR)
+}
+
+swingSAT <- function(){
+  swSAT = NULL
+  
+  for (i in 1:3){
+    GIIPref <- (GRV_p[i,2]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,2]*35.3)/BG_p
+    GIIPlo <- (GRV_p[i,2]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,1]*35.3)/BG_p
+    GIIPhi <- (GRV_p[i,2]*NTG_p[i,2]*POR_p[i,1]*SAT_p[i,3]*35.3)/BG_p
+    swSATi = GIIPhi - GIIPlo
+    swSAT[i] = swSATi
+    }
+  return(swSAT)
+}
+
+```
+
+##Calculate Swing of all variables for 3 fields
+```{r}
+swGRV <- swingGRV()
+swNTG <- swingNTG()
+swPOR <- swingPOR()
+swSAT <- swingSAT()
+    
+all_swing = matrix(c(swGRV,swNTG,swPOR,swSAT), byrow = TRUE, nrow=4, ncol=3)  
+colnames(all_swing) <- c("GIIP_Mung","GIIP_LBG","GIIP_Murr")
+rownames(all_swing) <- c("GRV","NTG","POR","SAT")
+```
+
+##Calculating coefficients - theta
+$$
+\theta_{GRV}^i = \frac{S_{GRV}^i \times\sqrt{Var(GIIP_i)}}{  \sqrt{S_{GRV}^i+S_{NTG}^i+S_{POR}^i+S_{SAT}^i}}
+$$
+While the variable $i$ represents the field number.  
+
+```{r}
+theta <- function(){
+  
+  thetaMatrix = NULL
+ 
+  
+  for (i in 1:3){
+    Variance <- var(GIIP_all[,i])
+    Swings <- sum((all_swing[2,i])^2,(all_swing[3,i])^2,(all_swing[4,i])^2,(all_swing[1,i])^2)
+    
+    thetaGRV <- (all_swing[1,i]*sqrt(Variance))/sqrt(Swings)
+    thetaNTG <- (all_swing[2,i]*sqrt(Variance))/sqrt(Swings)
+    thetaPOR <- (all_swing[3,i]*sqrt(Variance))/sqrt(Swings)
+    thetaSAT <- (all_swing[4,i]*sqrt(Variance))/sqrt(Swings)
+    thetaMatrix <- cbind(thetaMatrix, c(thetaGRV,thetaNTG,thetaPOR,thetaSAT))
+    
+  }
+  
+  return(thetaMatrix)
+}
+```
+
+```{r}
+thetas <- theta()
+colnames(thetas) <- c("GIIP_Mung","GIIP_LBG","GIIP_Murr")
+rownames(thetas) <- c("GRV","NTG","POR","SAT")
+```
+
+
+##Finding Correlation
+```{r}
+correlation <- function(rho, column, column2){
+  corr = NULL
+  covariance = 0
+  
+  for (i in 1:4){
+    covariance1 = rho*thetas[i,column]*thetas[i,column2]
+    covariance = covariance + covariance1
+  }
+  
+  corr = covariance/(sqrt(var(GIIP_all[,column])*var(GIIP_all[,column2])))
+
+  return(corr)  
+  
+}
+```
+
+```{r}
+MungLBG <- c(correlation(0,1,2),correlation(0.5,1,2),correlation(1,1,2))
+MungMurr <- c(correlation(0,1,3),correlation(0.5,1,3),correlation(1,1,3))
+LBGMurr <- c(correlation(0,2,3),correlation(0.5,2,3),correlation(1,2,3))
+```
+
+
+
+##Simulate GIIP with correlation
+```{r}
+# Estimating parameters for field Mungaroo
+beta1 <- 1/(var(GIIP_all[,1])/mean(GIIP_all[,1]))
+alpha1 <- mean(GIIP_all[,1])*beta1
+
+# Estimating parameters for field LBG
+beta2 <- 1/(var(GIIP_all[,2])/mean(GIIP_all[,2]))
+alpha2 <- mean(GIIP_all[,2])*beta2
+
+# Estimating parameters for field Murat
+beta3 <- 1/(var(GIIP_all[,3])/mean(GIIP_all[,3]))
+alpha3 <- mean(GIIP_all[,3])*beta3
+
+```
+
+```{r}
+# matrix for rho = 0
+matrho0 <-simulateMvMatrix(1000, 
+                      distributions = c( GIIPMung= "gamma", GIIPLBG = "gamma",GIIPMurr = "gamma"), 
+                      param.list =list(GIIPMung=list(shape=alpha1,scale=1/beta1), 
+                                       GIIPLBG= list(shape=alpha2,scale=1/beta2),
+                                       GIIPMurr= list(shape=alpha3,scale=1/beta3)), 
+                      cor.mat = matrix(c(1, MungLBG[1],MungMurr[1],MungLBG[1], 1,LBGMurr[1],MungMurr[1],LBGMurr[1],1),3, 3,byrow = TRUE),
+                      seed = 50)
+```
+
+```{r}
+# matrix for rho = 0.5
+matrho0.5 <-simulateMvMatrix(1000, 
+                      distributions = c( GIIPMung= "gamma", GIIPLBG = "gamma",GIIPMurr = "gamma"), 
+                      param.list =list(GIIPMung=list(shape=alpha1,scale=1/beta1), 
+                                       GIIPLBG= list(shape=alpha2,scale=1/beta2),
+                                       GIIPMurr= list(shape=alpha3,scale=1/beta3)), 
+                      cor.mat = matrix(c(1, MungLBG[2],MungMurr[2],MungLBG[2], 1,LBGMurr[2],MungMurr[2],LBGMurr[2],1),3, 3,byrow = TRUE),
+                      seed = 50)
+```
+
+```{r}
+# matrix for rho = 1
+matrho1 <-simulateMvMatrix(1000, 
+                      distributions = c( GIIPMung= "gamma", GIIPLBG = "gamma",GIIPMurr = "gamma"), 
+                      param.list =list(GIIPMung=list(shape=alpha1,scale=1/beta1), 
+                                       GIIPLBG= list(shape=alpha2,scale=1/beta2),
+                                       GIIPMurr= list(shape=alpha3,scale=1/beta3)), 
+                      cor.mat = matrix(c(1, MungLBG[3],MungMurr[3],MungLBG[3], 1,LBGMurr[3],MungMurr[3],LBGMurr[3],1),3, 3,byrow = TRUE),
+                      seed = 50)
+```
+
+##Aggregate Simulated GIIP Values
+```{r}
+GIIPTotal0 <- matrho0[,1]+matrho0[,2]+matrho0[,3]
+hist(GIIPTotal0, col="lightsteelblue",main="Histogram of GIIP (rho=0)")
+abline(v=quantile(GIIPTotal0, c(0.1, 0.5, 0.9)), lty=3)
+```
+
+```{r}
+GIIPTotal0.5 <- matrho0.5[,1]+matrho0.5[,2]+matrho0.5[,3]
+hist(GIIPTotal0.5, col="aquamarine2",main="Histogram of GIIP (rho=0.5)")
+abline(v=quantile(GIIPTotal0.5, c(0.1, 0.5, 0.9)), lty=3)
+```
+
+```{r}
+GIIPTotal1 <- matrho1[,1]+matrho1[,2]+matrho1[,3]
+hist(GIIPTotal1, col="lightsalmon1",main="Histogram of GIIP (rho=1)")
+abline(v=quantile(GIIPTotal1, c(0.1, 0.5, 0.9)), lty=3)
+```
+##Correlation Matrix
+```{r}
+corrmatrix1 <- matrix(c(1, MungLBG[3],MungMurr[3],MungLBG[3], 1,LBGMurr[3],MungMurr[3],LBGMurr[3],1),3, 3,byrow = TRUE)
+corrmatrix0.5 <- matrix(c(1, MungLBG[2],MungMurr[2],MungLBG[2], 1,LBGMurr[2],MungMurr[2],LBGMurr[2],1),3, 3,byrow = TRUE)
+corrmatrix0 <- matrix(c(1, MungLBG[1],MungMurr[1],MungLBG[1], 1,LBGMurr[1],MungMurr[1],LBGMurr[1],1),3, 3,byrow = TRUE)
+```
+
+```{r}
+par(mfrow=c(2,2))
+corrplot(corrmatrix1,method = 'square',type = 'upper',tl.col = 'black',order='hclust')
+corrplot(corrmatrix0.5,method = 'square',type = 'upper',tl.col = 'black',order='hclust')
+corrplot(corrmatrix0,method = 'square',type = 'upper',tl.col = 'black',order='hclust')
+```
+
+
+
