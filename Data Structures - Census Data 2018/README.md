@@ -1,8 +1,8 @@
 # Create Data Structures to Store and Process Census Data
 
 ## Tasks
-1. Build a suitable data structure for effective storage and display (upon query) of candidate profiles
-2. Implement filtering and search
+1. Build a suitable data structure for effective storage of candidate profiles
+2. Display candidate profiles based on user input of any attribute
 3. Calculate and display suburbs that have marginal preferrence for each candidate
 4. Make a campaign route to all the marginal areas (bonus points if shortest-path algorithm is implemented)
 
